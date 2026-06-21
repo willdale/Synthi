@@ -7,23 +7,31 @@
 
 import AVFoundation
 
+struct KernelWrapper: ~Copyable {
+    var value: SynthiExtensionDSPKernel
+
+    init() {
+        value = SynthiExtensionDSPKernel()
+    }
+}
+
 public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
 {
-	var kernel = SynthiExtensionDSPKernel()
-    var processHelper: AUProcessHelper?
+	private var kernel = KernelWrapper()
+    private var processHelper: AUProcessHelper
 
-	private var outputBus: AUAudioUnitBus?
+	private var outputBus: AUAudioUnitBus
 	private var _outputBusses: AUAudioUnitBusArray!
 
-	private var format:AVAudioFormat
+	private var format: AVAudioFormat
 
 	@objc override init(componentDescription: AudioComponentDescription, options: AudioComponentInstantiationOptions) throws {
-		self.format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
-		try super.init(componentDescription: componentDescription, options: options)
-		outputBus = try AUAudioUnitBus(format: self.format)
-        outputBus?.maximumChannelCount = 2
-		_outputBusses = AUAudioUnitBusArray(audioUnit: self, busType: AUAudioUnitBusType.output, busses: [outputBus!])
-        processHelper = AUProcessHelper(&kernel)
+		format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        processHelper = AUProcessHelper(&kernel.value)
+        outputBus = try AUAudioUnitBus(format: self.format)
+        outputBus.maximumChannelCount = 2
+        try super.init(componentDescription: componentDescription, options: options)
+        _outputBusses = AUAudioUnitBusArray(audioUnit: self, busType: AUAudioUnitBusType.output, busses: [outputBus])
 	}
 
 	public override var outputBusses: AUAudioUnitBusArray {
@@ -32,32 +40,32 @@ public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     
     public override var  maximumFramesToRender: AUAudioFrameCount {
         get {
-            return kernel.maximumFramesToRender()
+            return kernel.value.maximumFramesToRender()
         }
 
         set {
-            kernel.setMaximumFramesToRender(newValue)
+            kernel.value.setMaximumFramesToRender(newValue)
         }
     }
 
     public override var  shouldBypassEffect: Bool {
         get {
-            return kernel.isBypassed()
+            return kernel.value.isBypassed()
         }
 
         set {
-            kernel.setBypass(newValue)
+            kernel.value.setBypass(newValue)
         }
     }
 
     // MARK: - MIDI
     public override var audioUnitMIDIProtocol: MIDIProtocolID {
-        return kernel.AudioUnitMIDIProtocol()
+        return kernel.value.AudioUnitMIDIProtocol()
     }
 
     // MARK: - Rendering
     public override var internalRenderBlock: AUInternalRenderBlock {
-        return processHelper!.internalRenderBlock()
+        return processHelper.internalRenderBlock()
     }
         
     // Allocate resources required to render.
@@ -65,10 +73,10 @@ public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     public override func allocateRenderResources() throws {
 		let outputChannelCount = self.outputBusses[0].format.channelCount
         
-        kernel.setMusicalContextBlock(self.musicalContextBlock)
-		kernel.initialize(Int32(outputChannelCount), outputBus!.format.sampleRate)
+        kernel.value.setMusicalContextBlock(self.musicalContextBlock)
+		kernel.value.initialize(Int32(outputChannelCount), outputBus.format.sampleRate)
 
-        processHelper?.setChannelCount(0, self.outputBusses[0].format.channelCount)
+        processHelper.setChannelCount(0, self.outputBusses[0].format.channelCount)
 
 		try super.allocateRenderResources()
 	}
@@ -78,7 +86,7 @@ public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
     public override func deallocateRenderResources() {
         
         // Deallocate your resources.
-        kernel.deInitialize()
+        kernel.value.deInitialize()
         
         super.deallocateRenderResources()
     }
@@ -88,7 +96,7 @@ public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
 
 		// Set the Parameter default values before setting up the parameter callbacks
 		for param in parameterTree.allParameters {
-            kernel.setParameter(param.address, param.value)
+            kernel.value.setParameter(param.address, param.value)
 		}
 
 		setupParameterCallbacks()
@@ -97,12 +105,12 @@ public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
 	private func setupParameterCallbacks() {
 		// implementorValueObserver is called when a parameter changes value.
 		parameterTree?.implementorValueObserver = { [weak self] param, value -> Void in
-            self?.kernel.setParameter(param.address, value)
+            self?.kernel.value.setParameter(param.address, value)
 		}
 
 		// implementorValueProvider is called when the value needs to be refreshed.
 		parameterTree?.implementorValueProvider = { [weak self] param in
-            return self!.kernel.getParameter(param.address)
+            return self?.kernel.value.getParameter(param.address) ?? 0.0
 		}
 
 		// A function to provide string representations of parameter values.
@@ -110,7 +118,7 @@ public class SynthiExtensionAudioUnit: AUAudioUnit, @unchecked Sendable
 			guard let value = valuePtr?.pointee else {
 				return "-"
 			}
-			return NSString.localizedStringWithFormat("%.f", value) as String
+			return value.formatted(.number)
 		}
 	}
 }

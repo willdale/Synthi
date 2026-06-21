@@ -1,5 +1,5 @@
 //
-//  SinOscillator.h
+//  SquareOscillator.h
 //  SynthiExtension
 //
 //  Created by Will Dale on 21/06/2026.
@@ -10,9 +10,9 @@
 #include <numbers>
 #include <cmath>
 
-class SinOscillator {
+class SquareOscillator {
 public:
-    SinOscillator(double sampleRate = 44100.0) {
+    SquareOscillator(double sampleRate = 44100.0) {
         mSampleRate = sampleRate;
     }
 
@@ -23,9 +23,8 @@ public:
     double process() {
         const double sample = std::sin(mOmega * (std::numbers::pi_v<double> * 2.0));
         mOmega += mDeltaOmega;
-
         if (mOmega >= 1.0) { mOmega -= 1.0; }
-        return sample;
+        return (sample >= 0.0) ? 1.0 : -1.0;
     }
 
 private:

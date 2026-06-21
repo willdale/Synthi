@@ -14,7 +14,7 @@
 #include "SynthiExtensionDSPKernel.hpp"
 
 //MARK:- AUProcessHelper Utility Class
-class AUProcessHelper
+class AUProcessHelper final
 {
 public:
     AUProcessHelper(SynthiExtensionDSPKernel& kernel)

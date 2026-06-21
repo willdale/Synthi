@@ -12,24 +12,29 @@
 #import <algorithm>
 #import <vector>
 #import <span>
+#import <variant>
 
 #import "SinOscillator.h"
+#import "SawOscillator.h"
+#import "SquareOscillator.h"
+#import "TriangleOscillator.h"
 #import "SynthiExtensionParameterAddresses.h"
 
 
 class SynthiExtensionDSPKernel final {
 public:
     SynthiExtensionDSPKernel() = default;
-    // Prevent everything from accidentally copying the kernel and breaking block ownership.
     SynthiExtensionDSPKernel(const SynthiExtensionDSPKernel&) = delete;
     SynthiExtensionDSPKernel& operator=(const SynthiExtensionDSPKernel&) = delete;
-    // Move semantics are safe and can be added if needed (currently not required).
     SynthiExtensionDSPKernel(SynthiExtensionDSPKernel&&) = default;
     SynthiExtensionDSPKernel& operator=(SynthiExtensionDSPKernel&&) = default;
 
+    using OscillatorVariant = std::variant<SinOscillator, SawOscillator, SquareOscillator, TriangleOscillator>;
+
     void initialize(int channelCount, double inSampleRate) {
         mSampleRate = inSampleRate;
-        mSinOsc = SinOscillator(inSampleRate);
+        mOscillator.emplace<SinOscillator>(inSampleRate);
+        mOscType = 0;
     }
     
     void deInitialize() {
@@ -51,6 +56,34 @@ public:
             case SynthiExtensionParameterAddress::gain:
                 mGain = value;
                 break;
+            case SynthiExtensionParameterAddress::oscillatorType: {
+                int newType = static_cast<int>(value);
+                if (newType != mOscType) {
+                    mOscType = newType;
+                    switch (mOscType) {
+                        case 0:
+                            mOscillator.emplace<SinOscillator>(mSampleRate);
+                            break;
+                        case 1:
+                            mOscillator.emplace<SawOscillator>(mSampleRate);
+                            break;
+                        case 2:
+                            mOscillator.emplace<SquareOscillator>(mSampleRate);
+                            break;
+                        case 3:
+                            mOscillator.emplace<TriangleOscillator>(mSampleRate);
+                            break;
+                        default:
+                            mOscillator.emplace<SinOscillator>(mSampleRate);
+                            break;
+                    }
+                    // Reapply the last known frequency, if any.
+                    std::visit([this](auto& osc) {
+                        osc.setFrequency(mCurrentFreq);
+                    }, mOscillator);
+                }
+                break;
+            }
         }
     }
     
@@ -58,6 +91,8 @@ public:
         switch (address) {
             case SynthiExtensionParameterAddress::gain:
                 return (AUValue)mGain;
+            case SynthiExtensionParameterAddress::oscillatorType:
+                return (AUValue)mOscType;
             default: return 0.f;
         }
     }
@@ -105,7 +140,10 @@ public:
         }
         
         for (UInt32 frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-            const auto sample = mSinOsc.process() * mNoteEnvelope * mGain;
+            double sample = std::visit([](auto& osc) -> double {
+                return osc.process();
+            }, mOscillator);
+            sample *= mNoteEnvelope * mGain;
             for (UInt32 channel = 0; channel < outputBuffers.size(); ++channel) {
                 outputBuffers[channel][frameIndex] = sample;
             }
@@ -155,9 +193,10 @@ public:
                 break;
             case kMIDICVStatusNoteOn: {
                 const auto velocity = message.channelVoice2.note.velocity;
-                const auto freqHertz = MIDINoteToFrequency(note.number);
-                mSinOsc = SinOscillator(mSampleRate);
-                mSinOsc.setFrequency(freqHertz);
+                mCurrentFreq = MIDINoteToFrequency(note.number);
+                std::visit([this](auto& osc) {
+                    osc.setFrequency(mCurrentFreq);
+                }, mOscillator);
                 mNoteEnvelope = (double)velocity / (double)std::numeric_limits<std::uint16_t>::max();
             }
                 break;
@@ -176,7 +215,9 @@ public:
     bool mBypassed = false;
     AUAudioFrameCount mMaxFramesToRender = 1024;
     
-    SinOscillator mSinOsc;
+    OscillatorVariant mOscillator;
+    int mOscType = 0;
+    double mCurrentFreq = 440.0;
     
     double currentTempo = 120.0;
     double timeSignatureNumerator = 4.0;

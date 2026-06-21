@@ -10,5 +10,6 @@
 #include <AudioToolbox/AUParameters.h>
 
 typedef NS_ENUM(AUParameterAddress, SynthiExtensionParameterAddress) {
-    gain = 0
+    gain = 0,
+    oscillatorType = 1
 };
