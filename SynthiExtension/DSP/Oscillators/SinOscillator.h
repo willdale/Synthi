@@ -27,10 +27,6 @@ public:
         if (mOmega >= 1.0) { mOmega -= 1.0; }
         return sample;
     }
-    
-    void print() {
-        printf("mOmega: %f, mDeltaOmega: %f, mSampleRate: %f\n", mOmega, mDeltaOmega, mSampleRate);
-    }
 
 private:
     double mOmega = { 0.0 };

@@ -23,9 +23,9 @@ let SynthiExtensionParameterSpecs = ParameterTreeSpec {
             identifier: "oscillatorType",
             name: "Oscillator Type",
             units: .indexed,
-            valueRange: 0.0...3.0,
-            defaultValue: 0.0,
-            valueStrings: ["Sine", "Saw", "Square", "Triangle"]
+            valueRange: OscillatorType.valueRange,
+            defaultValue: AUValue(OscillatorType.sine.rawValue),
+            valueStrings: OscillatorType.displayNames
         )
     }
 }
@@ -43,34 +43,17 @@ extension ParameterSpec {
         valueStrings: [String]? = nil,
         dependentParameters: [NSNumber]? = nil
     ) {
-        self.init(address: address.rawValue,
-                  identifier: identifier,
-                  name: name,
-                  units: units,
-                  valueRange: valueRange,
-                  defaultValue: defaultValue,
-                  unitName: unitName,
-                  flags: flags,
-                  valueStrings: valueStrings,
-                  dependentParameters: dependentParameters)
-    }
-}
-
-// MARK: - Oscillator type mapping
-
-/// Represents the available oscillator waveforms (matches C++ variant indices).
-enum OscillatorType: Int, CaseIterable, Sendable {
-    case sine   = 0
-    case saw    = 1
-    case square = 2
-    case triangle = 3
-
-    var displayName: String {
-        switch self {
-        case .sine:      return "Sine"
-        case .saw:       return "Saw"
-        case .square:    return "Square"
-        case .triangle:  return "Triangle"
-        }
+        self.init(
+            address: address.rawValue,
+            identifier: identifier,
+            name: name,
+            units: units,
+            valueRange: valueRange,
+            defaultValue: defaultValue,
+            unitName: unitName,
+            flags: flags,
+            valueStrings: valueStrings,
+            dependentParameters: dependentParameters
+        )
     }
 }

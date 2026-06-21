@@ -19,6 +19,7 @@
 #import "SquareOscillator.h"
 #import "TriangleOscillator.h"
 #import "SynthiExtensionParameterAddresses.h"
+#import "OscillatorTypes.h"
 
 
 class SynthiExtensionDSPKernel final {
@@ -34,7 +35,6 @@ public:
     void initialize(int channelCount, double inSampleRate) {
         mSampleRate = inSampleRate;
         mOscillator.emplace<SinOscillator>(inSampleRate);
-        mOscType = 0;
     }
     
     void deInitialize() {
@@ -57,24 +57,20 @@ public:
                 mGain = value;
                 break;
             case SynthiExtensionParameterAddress::oscillatorType: {
-                int newType = static_cast<int>(value);
-                if (newType != mOscType) {
-                    mOscType = newType;
-                    switch (mOscType) {
-                        case 0:
+                auto newType = static_cast<OscillatorType>(static_cast<int>(value));
+                if (newType != static_cast<OscillatorType>(mOscillator.index())) {
+                    switch (newType) {
+                        case OscillatorType::sine:
                             mOscillator.emplace<SinOscillator>(mSampleRate);
                             break;
-                        case 1:
+                        case OscillatorType::saw:
                             mOscillator.emplace<SawOscillator>(mSampleRate);
                             break;
-                        case 2:
+                        case OscillatorType::square:
                             mOscillator.emplace<SquareOscillator>(mSampleRate);
                             break;
-                        case 3:
+                        case OscillatorType::triangle:
                             mOscillator.emplace<TriangleOscillator>(mSampleRate);
-                            break;
-                        default:
-                            mOscillator.emplace<SinOscillator>(mSampleRate);
                             break;
                     }
                     // Reapply the last known frequency, if any.
@@ -92,7 +88,7 @@ public:
             case SynthiExtensionParameterAddress::gain:
                 return (AUValue)mGain;
             case SynthiExtensionParameterAddress::oscillatorType:
-                return (AUValue)mOscType;
+                return static_cast<AUValue>(mOscillator.index());
             default: return 0.f;
         }
     }
@@ -216,7 +212,6 @@ public:
     AUAudioFrameCount mMaxFramesToRender = 1024;
     
     OscillatorVariant mOscillator;
-    int mOscType = 0;
     double mCurrentFreq = 440.0;
     
     double currentTempo = 120.0;
