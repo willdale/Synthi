@@ -10,32 +10,55 @@ import SwiftUI
 struct SynthiExtensionMainView: View {
     var parameterTree: ObservableAUParameterGroup
 
-    /// Strongly‑typed access to the oscillator type parameter.
-    private var oscillatorParam: ObservableAUParameter {
-        parameterTree.global.oscillatorType as! ObservableAUParameter
+    private var oscillatorCount: Int {
+        let param = parameterTree.global.oscillatorCount as! ObservableAUParameter
+        return Int(param.value.rounded())
     }
 
-    /// A SwiftUI Binding that maps between the parameter’s Float value and our enum.
-    private var oscillatorType: Binding<OscillatorType> {
-        Binding<OscillatorType>(
+    private func oscillatorBinding(for param: ObservableAUParameterNode) -> Binding<OscillatorType> {
+        let oscParam = param as! ObservableAUParameter
+        return Binding<OscillatorType>(
             get: {
-                let raw = Int32(oscillatorParam.value.rounded())
+                let raw = Int32(oscParam.value.rounded())
                 return OscillatorType(rawValue: raw) ?? .sine
             },
             set: { newType in
                 let newValue = Float(newType.rawValue)
-                guard oscillatorParam.value != newValue else { return }
-                oscillatorParam.value = newValue
-                oscillatorParam.onEditingChanged(true)
-                oscillatorParam.onEditingChanged(false)
+                guard oscParam.value != newValue else { return }
+                oscParam.value = newValue
+                oscParam.onEditingChanged(true)
+                oscParam.onEditingChanged(false)
             }
         )
     }
 
     var body: some View {
-        VStack {
-            ParameterSlider(param: parameterTree.global.gain)
-            OscillatorTypePicker(oscillatorType: oscillatorType)
+        ScrollView {
+            VStack(spacing: 16) {
+                GroupBox("Output") {
+                    ParameterSlider(param: parameterTree.global.gain)
+                    ParameterStepper(param: parameterTree.global.oscillatorCount)
+                }
+
+                ForEach(1...oscillatorCount, id: \.self) { i in
+                    if let group = parameterTree.children["osc\(i)"] as? ObservableAUParameterGroup {
+                        GroupBox("Oscillator \(i)") {
+                            OscillatorTypePicker(oscillatorType: oscillatorBinding(for: group.children["osc\(i)Type"]!))
+                            if let levelParam = group.children["osc\(i)Level"] as? ObservableAUParameter {
+                                ParameterSlider(param: levelParam)
+                            } else {
+                                Text("ERROR: Could not get Level parameter")
+                            }
+                            if let detuneParam = group.children["osc\(i)Detune"] as? ObservableAUParameter {
+                                ParameterSlider(param: detuneParam)
+                            } else {
+                                Text("ERROR: Could not get Detune parameter")
+                            }
+                        }
+                    }
+                }
+            }
+            .padding()
         }
     }
 }

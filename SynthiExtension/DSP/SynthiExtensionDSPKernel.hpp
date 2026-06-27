@@ -7,34 +7,28 @@
 
 #pragma once
 
+#import <swift/bridging>
+
 #import <AudioToolbox/AudioToolbox.h>
 #import <CoreMIDI/CoreMIDI.h>
 #import <algorithm>
-#import <vector>
 #import <span>
-#import <variant>
 
-#import "SinOscillator.h"
-#import "SawOscillator.h"
-#import "SquareOscillator.h"
-#import "TriangleOscillator.h"
+#import "Voice.hpp"
 #import "SynthiExtensionParameterAddresses.h"
 #import "OscillatorTypes.h"
 
-
-class SynthiExtensionDSPKernel final {
+class SWIFT_SELF_CONTAINED SWIFT_NONCOPYABLE SWIFT_ESCAPABLE SynthiExtensionDSPKernel final {
 public:
     SynthiExtensionDSPKernel() = default;
     SynthiExtensionDSPKernel(const SynthiExtensionDSPKernel&) = delete;
     SynthiExtensionDSPKernel& operator=(const SynthiExtensionDSPKernel&) = delete;
     SynthiExtensionDSPKernel(SynthiExtensionDSPKernel&&) = default;
     SynthiExtensionDSPKernel& operator=(SynthiExtensionDSPKernel&&) = default;
-
-    using OscillatorVariant = std::variant<SinOscillator, SawOscillator, SquareOscillator, TriangleOscillator>;
-
+    
     void initialize(int channelCount, double inSampleRate) {
         mSampleRate = inSampleRate;
-        mOscillator.emplace<SinOscillator>(inSampleRate);
+        mVoice = Voice(inSampleRate, mOscillatorCount);
     }
     
     void deInitialize() {
@@ -42,7 +36,8 @@ public:
     }
     
     // MARK: - Bypass
-    bool isBypassed() {
+    
+    bool isBypassed() const {
         return mBypassed;
     }
     
@@ -51,49 +46,46 @@ public:
     }
     
     // MARK: - Parameter Getter / Setter
+    
     void setParameter(AUParameterAddress address, AUValue value) {
-        switch (address) {
-            case SynthiExtensionParameterAddress::gain:
-                mGain = value;
-                break;
-            case SynthiExtensionParameterAddress::oscillatorType: {
-                auto newType = static_cast<OscillatorType>(static_cast<int>(value));
-                if (newType != static_cast<OscillatorType>(mOscillator.index())) {
-                    switch (newType) {
-                        case OscillatorType::sine:
-                            mOscillator.emplace<SinOscillator>(mSampleRate);
-                            break;
-                        case OscillatorType::saw:
-                            mOscillator.emplace<SawOscillator>(mSampleRate);
-                            break;
-                        case OscillatorType::square:
-                            mOscillator.emplace<SquareOscillator>(mSampleRate);
-                            break;
-                        case OscillatorType::triangle:
-                            mOscillator.emplace<TriangleOscillator>(mSampleRate);
-                            break;
-                    }
-                    // Reapply the last known frequency, if any.
-                    std::visit([this](auto& osc) {
-                        osc.setFrequency(mCurrentFreq);
-                    }, mOscillator);
+        if (address == SynthiExtensionParameterAddress::gain) {
+            mGain = value;
+        } else if (address == SynthiExtensionParameterAddress::oscillatorCount) {
+            mOscillatorCount = static_cast<int>(value);
+            mVoice.setActiveCount(mOscillatorCount);
+        } else {
+            OscAddress osc;
+            if (decodeOscAddress(address, osc)) {
+                switch (osc.param) {
+                    case 0: mVoice.setOscillatorType(osc.slot, static_cast<OscillatorType>(static_cast<int>(value))); break;
+                    case 1: mVoice.setOscillatorLevel(osc.slot, value); break;
+                    case 2: mVoice.setOscillatorDetune(osc.slot, static_cast<signed short int>(value)); break;
                 }
-                break;
             }
         }
     }
-    
+
     AUValue getParameter(AUParameterAddress address) {
-        switch (address) {
-            case SynthiExtensionParameterAddress::gain:
-                return (AUValue)mGain;
-            case SynthiExtensionParameterAddress::oscillatorType:
-                return static_cast<AUValue>(mOscillator.index());
-            default: return 0.f;
+        if (address == SynthiExtensionParameterAddress::gain) {
+            return (AUValue)mGain;
         }
+        if (address == SynthiExtensionParameterAddress::oscillatorCount) {
+            return (AUValue)mOscillatorCount;
+        }
+        OscAddress osc;
+        if (decodeOscAddress(address, osc)) {
+            if (osc.slot >= mVoice.activeCount()) return 0.f;
+            switch (osc.param) {
+                case 0: return static_cast<AUValue>(mVoice.getOscillatorType(osc.slot));
+                case 1: return static_cast<AUValue>(mVoice.getOscillatorLevel(osc.slot));
+                case 2: return static_cast<AUValue>(mVoice.getOscillatorDetune(osc.slot));
+            }
+        }
+        return 0.f;
     }
     
     // MARK: - Max Frames
+    
     AUAudioFrameCount maximumFramesToRender() const {
         return mMaxFramesToRender;
     }
@@ -103,12 +95,13 @@ public:
     }
     
     // MARK: - Musical Context
+    
     void setMusicalContextBlock(AUHostMusicalContextBlock contextBlock) {
-        // Copy the block to ensure it survives beyond this call.
-        mMusicalContextBlock = [contextBlock copy];
+        mMusicalContextBlock = contextBlock;
     }
     
     // MARK: - MIDI Protocol
+    
     MIDIProtocolID AudioUnitMIDIProtocol() const {
         return kMIDIProtocol_2_0;
     }
@@ -136,10 +129,7 @@ public:
         }
         
         for (UInt32 frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
-            double sample = std::visit([](auto& osc) -> double {
-                return osc.process();
-            }, mOscillator);
-            sample *= mNoteEnvelope * mGain;
+            double sample = mVoice.process() * mGain;
             for (UInt32 channel = 0; channel < outputBuffers.size(); ++channel) {
                 outputBuffers[channel][frameIndex] = sample;
             }
@@ -184,16 +174,14 @@ public:
         const auto& note = message.channelVoice2.note;
         switch (message.channelVoice2.status) {
             case kMIDICVStatusNoteOff: {
-                mNoteEnvelope = 0.0;
+                mVoice.noteOff();
             }
                 break;
             case kMIDICVStatusNoteOn: {
                 const auto velocity = message.channelVoice2.note.velocity;
-                mCurrentFreq = MIDINoteToFrequency(note.number);
-                std::visit([this](auto& osc) {
-                    osc.setFrequency(mCurrentFreq);
-                }, mOscillator);
-                mNoteEnvelope = (double)velocity / (double)std::numeric_limits<std::uint16_t>::max();
+                double freq = MIDINoteToFrequency(note.number);
+                double normVelocity = (double)velocity / (double)std::numeric_limits<std::uint16_t>::max();
+                mVoice.noteOn(freq, normVelocity);
             }
                 break;
             default:
@@ -202,17 +190,17 @@ public:
     }
     
     // MARK: - Member Variables
+    
     AUHostMusicalContextBlock mMusicalContextBlock = nullptr;
     
     double mSampleRate = 44100.0;
     double mGain = 1.0;
-    double mNoteEnvelope = 0.0;
     
     bool mBypassed = false;
     AUAudioFrameCount mMaxFramesToRender = 1024;
     
-    OscillatorVariant mOscillator;
-    double mCurrentFreq = 440.0;
+    int mOscillatorCount = 3;
+    Voice mVoice{44100.0, mOscillatorCount};
     
     double currentTempo = 120.0;
     double timeSignatureNumerator = 4.0;

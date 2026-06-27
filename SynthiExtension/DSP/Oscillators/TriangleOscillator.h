@@ -10,7 +10,7 @@
 #include <numbers>
 #include <cmath>
 
-class TriangleOscillator {
+class TriangleOscillator final {
 public:
     TriangleOscillator(double sampleRate = 44100.0) {
         mSampleRate = sampleRate;

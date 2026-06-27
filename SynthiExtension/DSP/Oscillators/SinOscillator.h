@@ -10,7 +10,7 @@
 #include <numbers>
 #include <cmath>
 
-class SinOscillator {
+class SinOscillator final {
 public:
     SinOscillator(double sampleRate = 44100.0) {
         mSampleRate = sampleRate;

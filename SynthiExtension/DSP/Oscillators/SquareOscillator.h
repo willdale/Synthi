@@ -10,7 +10,7 @@
 #include <numbers>
 #include <cmath>
 
-class SquareOscillator {
+class SquareOscillator final {
 public:
     SquareOscillator(double sampleRate = 44100.0) {
         mSampleRate = sampleRate;

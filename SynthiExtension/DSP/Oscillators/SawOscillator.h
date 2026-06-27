@@ -10,7 +10,7 @@
 #include <numbers>
 #include <cmath>
 
-class SawOscillator {
+class SawOscillator final {
 public:
     SawOscillator(double sampleRate = 44100.0) {
         mSampleRate = sampleRate;
@@ -21,7 +21,6 @@ public:
     }
 
     double process() {
-        // Map phase [0, 1) to [-1, 1)
         const double sample = (mOmega * 2.0) - 1.0;
         mOmega += mDeltaOmega;
         if (mOmega >= 1.0) { mOmega -= 1.0; }

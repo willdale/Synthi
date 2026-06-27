@@ -39,6 +39,7 @@ public struct ParameterGroupSpec: NodeSpec {
 public struct ParameterTreeSpec: NodeSpec {
     let children: [NodeSpec]
     init(@ParameterGroupBuilder _ children: () -> [NodeSpec]) { self.children = children() }
+    init(children: [NodeSpec]) { self.children = children }
 }
 
 /// ParameterSpec mirrors what gets passed to
